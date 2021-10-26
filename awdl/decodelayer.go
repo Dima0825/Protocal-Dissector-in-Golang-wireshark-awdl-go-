@@ -42,13 +42,30 @@ func main() {
 			fmt.Println("Tags :", len(a.Tags))
 			fmt.Println()
 
-			//todo: loop through each packet
-			t := awdl.ProcessTag(a.Tags[0])
+			for _, tag := range a.Tags {
+				//todo: loop through each packet
+				t := awdl.ProcessTag(tag)
 
-			sync, ok := t.(*awdl.Synchronization)
+				//case interface to struct
+				sync, ok := t.(*awdl.SynchronizationParameters)
+				if ok == true {
+					fmt.Println(sync)
+				}
 
-			if ok == true {
-				fmt.Println(sync)
+				ep, ok := t.(*awdl.ElectionParameters)
+				if ok == true {
+					fmt.Println(ep)
+				}
+
+				cs, ok := t.(*awdl.ChannelSequence)
+				if ok == true {
+					fmt.Println(cs)
+				}
+
+				epv2, ok := t.(*awdl.ElectionParametersV2)
+				if ok == true {
+					fmt.Println(epv2)
+				}
 			}
 		}
 	}

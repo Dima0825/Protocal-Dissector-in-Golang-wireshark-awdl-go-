@@ -41,7 +41,13 @@ type Channel struct {
 	Flag   uint8
 	Number uint8
 }
-type Synchronization struct {
+
+type ChannelNumClass struct {
+	Number         uint8
+	OperatingClass uint8
+}
+
+type SynchronizationParameters struct {
 	NewAwChannel                    uint8
 	TxCounter                       uint16
 	MasterChannel                   uint8
@@ -70,6 +76,39 @@ type Synchronization struct {
 	Padding                         uint16
 }
 
+type ElectionParameters struct {
+	Flags            uint8
+	Id               uint16
+	DistanceToMaster uint8
+	Unknown          uint8
+	MasterAddress    [6]byte
+	MasterMetric     uint32
+	SelfMetric       uint32
+	Padding          uint16
+}
+
+type ElectionParametersV2 struct {
+	MasterAddress    [6]byte
+	OtherAddress     [6]byte
+	MasterCount      uint32
+	DistanceToMaster uint32
+	MasterMetric     uint32
+	SelfMetric       uint32
+	Unknown          uint32
+	Reserved         uint32
+	SelfCounter      uint32
+}
+
+type ChannelSequence struct {
+	NumChannels uint8
+	Encoding    uint8
+	Duplicate   uint8
+	StepCount   uint8
+	FillChannel uint16
+	ChannelList [16]ChannelNumClass
+	Padding     [3]uint8
+}
+
 type TLV struct {
 	TagNumber uint8
 	TagLength uint16
@@ -88,8 +127,121 @@ type AWDL struct {
 	Tags         []TLV
 }
 
+func get32(data []byte) uint32 {
+	return (uint32(data[3])<<24 + uint32(data[2])<<16 + uint32(data[1])<<8 + uint32(data[0]))
+}
+
+func get16(data []byte) uint16 {
+	return (uint16(data[1])<<8 + uint16(data[0]))
+
+}
+
+func processSynchornizationParameter(data []byte) SynchronizationParameters {
+
+	// todo length verification check
+	sync := SynchronizationParameters{}
+
+	sync.NewAwChannel = data[0]
+	sync.TxCounter = uint16(data[2])<<8 + uint16(data[1])
+	sync.MasterChannel = data[3]
+	sync.GuardTime = data[4]
+	sync.AvailabilityWindowPeriod = uint16(data[6])<<8 + uint16(data[5])
+	sync.ActionFrame = uint16(data[8])<<8 + uint16(data[7])
+	sync.AwdlFlags = uint16(data[10])<<8 + uint16(data[9])
+	sync.AvailabilityWindowExtLen = uint16(data[12])<<8 + uint16(data[11])
+	sync.AvailabilityWindowCommonLen = uint16(data[14])<<8 + uint16(data[13])
+	sync.RemainingAvailabilityWindowlen = uint16(data[16])<<8 + uint16(data[15])
+	sync.MinExtensionCount = data[17]
+	sync.MaxExtensionCountForMulticast = data[18]
+	sync.MaxExtensionCountForUnicast = data[19]
+	sync.MaxExtensionCountForActionFrame = data[20]
+	copy(sync.MasterAddress[:], data[21:27])
+	sync.PresenceMode = data[27]
+	sync.Unknown = data[28]
+	sync.AwSequenceNum = uint16(data[30])<<8 + uint16(data[29])
+	sync.ApBeaconAlignmentDelta = uint16(data[32])<<8 + uint16(data[31])
+	sync.NumChannels = data[33]
+	sync.Encoding = data[34]
+	sync.Duplicate = data[35]
+	sync.StepCount = data[36]
+	sync.FillChannel = uint16(data[38])<<8 + uint16(data[37])
+
+	loop := 0
+	index := 39
+	for loop < 16 {
+		sync.ChannelList[loop].Flag = data[index]
+		index++
+		sync.ChannelList[loop].Number = data[index]
+		index++
+		loop++
+	}
+
+	sync.Padding = uint16(data[index+1])<<8 + uint16(data[index])
+
+	return sync
+}
+
+func processElectionParameters(data []byte) ElectionParameters {
+
+	//todo: length check
+
+	electionParam := ElectionParameters{}
+	electionParam.Flags = data[0]
+	electionParam.Id = uint16(data[2])<<8 + uint16(data[1])
+	electionParam.DistanceToMaster = data[3]
+	electionParam.Unknown = data[4]
+	copy(electionParam.MasterAddress[:], data[5:11])
+
+	electionParam.MasterMetric = uint32(data[14])<<24 + uint32(data[13])<<16 + uint32(data[12])<<8 + uint32(data[11])
+	electionParam.SelfMetric = uint32(data[18])<<24 + uint32(data[17])<<16 + uint32(data[16])<<8 + uint32(data[15])
+	electionParam.Padding = uint16(data[20])<<8 + uint16(data[19])
+
+	return electionParam
+}
+
+func processChannelSequence(data []byte) ChannelSequence {
+	//todo: length check
+
+	chanSeq := ChannelSequence{}
+	chanSeq.NumChannels = data[0]
+	chanSeq.Encoding = data[1]
+	chanSeq.Duplicate = data[2]
+	chanSeq.StepCount = data[3]
+	chanSeq.FillChannel = uint16(data[5])<<8 + uint16(data[4])
+
+	loop := 0
+	index := 6
+	for loop < 16 {
+		chanSeq.ChannelList[loop].Number = data[index]
+		index++
+		chanSeq.ChannelList[loop].OperatingClass = data[index]
+		index++
+		loop++
+	}
+
+	copy(chanSeq.Padding[:], data[index:index+3])
+
+	return chanSeq
+}
+
+func processElectionParametersV2(data []byte) ElectionParametersV2 {
+	//todo: length check
+
+	electionParamv2 := ElectionParametersV2{}
+	copy(electionParamv2.MasterAddress[:], data[0:6])
+	copy(electionParamv2.OtherAddress[:], data[6:12])
+	electionParamv2.MasterCount = get32(data[12:])
+	electionParamv2.DistanceToMaster = get32(data[16:])
+	electionParamv2.MasterMetric = get32(data[20:])
+	electionParamv2.SelfMetric = get32(data[24:])
+	electionParamv2.Unknown = get32(data[28:])
+	electionParamv2.Reserved = get32(data[32:])
+	electionParamv2.SelfCounter = get32(data[36:])
+
+	return electionParamv2
+}
+
 func ProcessTag(tlv TLV) interface{} {
-	sync := Synchronization{}
 
 	// length check
 
@@ -97,50 +249,29 @@ func ProcessTag(tlv TLV) interface{} {
 	switch tlv.TagNumber {
 
 	case AWDL_SYNCHRONIZATON_PARAMETERS_TLV:
-		sync.NewAwChannel = tlv.TagData[0]
-		sync.TxCounter = uint16(tlv.TagData[2])<<8 + uint16(tlv.TagData[1])
-		sync.MasterChannel = tlv.TagData[3]
-		sync.GuardTime = tlv.TagData[4]
-		sync.AvailabilityWindowPeriod = uint16(tlv.TagData[6])<<8 + uint16(tlv.TagData[5])
-		sync.ActionFrame = uint16(tlv.TagData[8])<<8 + uint16(tlv.TagData[7])
-		sync.AwdlFlags = uint16(tlv.TagData[10])<<8 + uint16(tlv.TagData[9])
-		sync.AvailabilityWindowExtLen = uint16(tlv.TagData[12])<<8 + uint16(tlv.TagData[11])
-		sync.AvailabilityWindowCommonLen = uint16(tlv.TagData[14])<<8 + uint16(tlv.TagData[13])
-		sync.RemainingAvailabilityWindowlen = uint16(tlv.TagData[16])<<8 + uint16(tlv.TagData[15])
-		sync.MinExtensionCount = tlv.TagData[17]
-		sync.MaxExtensionCountForMulticast = tlv.TagData[18]
-		sync.MaxExtensionCountForUnicast = tlv.TagData[19]
-		sync.MaxExtensionCountForActionFrame = tlv.TagData[20]
-		copy(sync.MasterAddress[:], tlv.TagData[21:27])
-		sync.PresenceMode = tlv.TagData[27]
-		sync.Unknown = tlv.TagData[28]
-		sync.AwSequenceNum = uint16(tlv.TagData[30])<<8 + uint16(tlv.TagData[29])
-		sync.ApBeaconAlignmentDelta = uint16(tlv.TagData[32])<<8 + uint16(tlv.TagData[31])
-		sync.NumChannels = tlv.TagData[33]
-		sync.Encoding = tlv.TagData[34]
-		sync.Duplicate = tlv.TagData[35]
-		sync.StepCount = tlv.TagData[36]
-		sync.FillChannel = uint16(tlv.TagData[38])<<8 + uint16(tlv.TagData[37])
 
-		loop := 0
-		index := 39
-		for loop < 16 {
-			sync.ChannelList[loop].Flag = tlv.TagData[index]
-			index++
-			sync.ChannelList[loop].Number = tlv.TagData[index]
-			index++
-			loop++
-		}
+		sync := processSynchornizationParameter(tlv.TagData)
+		return &sync
 
-		sync.Padding = uint16(tlv.TagData[index+1])<<8 + uint16(tlv.TagData[index])
+	case AWDL_ELECTION_PARAMETERS_TLV:
 
+		electionParam := processElectionParameters(tlv.TagData)
+		return &electionParam
+
+	case AWDL_CHAN_SEQ_TLV:
+
+		chanSeq := processChannelSequence(tlv.TagData)
+		return &chanSeq
+
+	case AWDL_ELECTION_PARAMETERS_V2_TLV:
+		electionParamv2 := processElectionParametersV2(tlv.TagData)
+		return &electionParamv2
 	default:
 		return nil
 	}
 
-	return &sync
+	return nil
 }
-
 func DecodeAwdData(data []byte) {
 	fmt.Println("calling DecodeAwdData")
 
